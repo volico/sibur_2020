@@ -17,6 +17,7 @@ def set_seed(seed = random_state) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
+
 class nn_training:
     def __init__(self, model, X, y, device=torch.device('cuda:0')):
 
@@ -26,10 +27,10 @@ class nn_training:
         self.device = device
 
     def data_loaders(self, fold, X, y, batch_size):
-        X_train = torch.from_numpy(X.loc[fold[0], :].values).float().to(self.device)
-        y_train = torch.from_numpy(y.loc[fold[0], :].values).float().to(self.device)
-        X_test = torch.from_numpy(X.loc[fold[1], :].values).float().to(self.device)
-        y_test = torch.from_numpy(y.loc[fold[1], :].values).float().to(self.device)
+        X_train = torch.from_numpy(X[fold[0]]).float().to(self.device)
+        y_train = torch.from_numpy(y.iloc[fold[0]].values).float().to(self.device)
+        X_test = torch.from_numpy(X[fold[1]]).float().to(self.device)
+        y_test = torch.from_numpy(y.iloc[fold[1]].values).float().to(self.device)
 
         set_seed(seed=random_state)
         train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
@@ -39,6 +40,8 @@ class nn_training:
         val_dataset = torch.utils.data.TensorDataset(X_test, y_test)
         val_loader = torch.utils.data.DataLoader(val_dataset,
                                                  batch_size=y_test.shape[0], shuffle=False)
+        del X_train, X_test, y_test, y_train
+        torch.cuda.empty_cache()
 
         return (train_loader, val_loader)
 

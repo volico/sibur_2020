@@ -78,41 +78,50 @@ class training:
     def pl_model(self, X, y, cv, params, trial):
 
         print('current params:', params)
-        n_in = params['n_in']
+        seq_len = params['seq_len']
+        params.pop('seq_len')
         batch_size = params['batch_size']
         params.pop('batch_size')
 
-        def prepare_features(n_in, train_features):
-            train_features['grouper'] = 1
-            final_features = pd.DataFrame()
-            for n in range(n_in, train_features.shape[0]):
-                n_in_previous = train_features.iloc[(n - n_in):(n + 1), :]
-                previous_pivoted = pd.pivot_table(n_in_previous, index='grouper', columns='timestamp')
-                previous_pivoted.columns = previous_pivoted.columns.get_level_values(0) + \
-                                           '_' + \
-                                           pd.Series(list(range(0, n_in + 1)) * 10).astype(str)
-                final_features = final_features.append(previous_pivoted.transpose()[1])
-            final_features.index = train_features.iloc[n_in:, :].index
+        def make_seqs(n, data):
+            final_X = []
 
-            return final_features
+            def seq2seq(x):
+                seqs_X.append(np.array(x).reshape(-1, 1))
+                return (5)
 
-        X = prepare_features(n_in, X)
-        y = y[n_in:]
+            for col in data.columns:
+                seqs_X = []
+                data[col].rolling(n).apply(seq2seq)
+                seqs_X = np.array(seqs_X)
+                final_X.append(seqs_X)
+
+            final_X = np.concatenate(final_X, axis=2)
+            return (final_X)
+
+        X = make_seqs(seq_len, X)
+        y = y[(seq_len-1):]
 
         best_iters = []
         best_cv = []
 
         t = 0
         for fold in cv:
-            fold[0] = fold[0][n_in:]
+            fold[0] = fold[0][(seq_len-1):]
+            for idx1 in range(0, len(fold[0])):
+                fold[0][idx1] = fold[0][idx1] - seq_len + 1
+
+            for idx2 in range(0, len(fold[1])):
+                fold[1][idx2] = fold[1][idx2] - seq_len + 1
             cv[t] = fold
             t = t + 1
+
         print(cv[0][0])
         print(X.shape)
         print(y.shape)
         for fold in cv[:-1]:
             model_cv = self.training_nn(self.nn_model, X, y)
-            model_cv.train(min_epochs=60,
+            model_cv.train(min_epochs=5,
                            max_epochs=3000,
                            model_params=params,
                            fold=fold,
