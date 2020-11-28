@@ -54,15 +54,18 @@ class nn_training:
                                  progress_bar_refresh_rate=0,
                                  callbacks=[EarlyStopping(min_delta=0.00001, patience=5, monitor='val_loss')],
                                  num_sanity_val_steps=0,
-                                 gpus=1)
+                                 gpus=1,
+                                 flush_logs_every_n_steps=10**10000000)
         else:
             trainer = pl.Trainer(min_epochs=min_epochs,
                                  max_epochs=max_epochs,
                                  progress_bar_refresh_rate=0,
                                  num_sanity_val_steps=0,
-                                 gpus=1)
+                                 gpus=1,
+                                 flush_logs_every_n_steps=10**10000000)
 
         my_model = self.model(**model_params)
         ## Тренирум модель
         trainer.fit(my_model, train_loader, val_loader)
-        self.model = my_model
+        self.trained_model = my_model
+        self.trainer = trainer
