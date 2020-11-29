@@ -6,6 +6,7 @@ import numpy as np
 import copy
 from sklearn.metrics import mean_absolute_error
 import lightgbm as lgb
+import preprocessing
 
 class training:
 
@@ -33,8 +34,7 @@ class training:
 
         def lgb_scoring(y_hat, data):
             y_true = data.get_label()
-            mape = np.mean(np.abs(y_true - y_hat)/np.abs(y_true))
-            return 'loss', mape, False
+            return 'loss', mean_absolute_error(y_true, y_hat), False
 
         train_data = lgb.Dataset(X, y)
         cv_model = lgb.cv(params = params,
@@ -49,15 +49,18 @@ class training:
         X_test = X.iloc[cv[-1][1], :]
         y_test = y.iloc[cv[-1][1]]
         train_data = lgb.Dataset(X_train,
-                                 y_train,
-                                 categorical_feature = [X.columns.get_loc(c) for c in \
-                                                        [col for col in X.columns \
-                                                         if ('popular' in col) | ('identifier' in col)]])
+                                 y_train
+#                                 ,
+#                                 categorical_feature = [X.columns.get_loc(c) for c in \
+ #                                                       [col for col in X.columns \
+  #                                                       if ('popular' in col) | ('identifier' in col)]]
+                                 )
         test_data = lgb.Dataset(X_test,
                                 y_test,
-                                categorical_feature = [X.columns.get_loc(c) for c in \
-                                                       [col for col in X.columns \
-                                                        if ('popular' in col) | ('identifier' in col)]])
+#                                categorical_feature = [X.columns.get_loc(c) for c in \
+#                                                       [col for col in X.columns \
+#                                                        if ('popular' in col) | ('identifier' in col)]]
+                                                                                        )
         evals_result = {}
         params['n_estimators'] = len(cv_model['loss-mean'])
         test_model = lgb.train(params = params,
@@ -100,7 +103,7 @@ class training:
 
             mean_best_iter = round(iters[target].mean())
             model_test = self.training_nn(self.nn_model, X, y[[target]])
-            test_losses = model_test.train(min_epochs=mean_best_iter,
+            model_test.train(min_epochs=mean_best_iter,
                                            max_epochs=mean_best_iter,
                                            model_params=params,
                                            fold=cv[-1],
@@ -123,7 +126,10 @@ class training:
 
         ## Множество параметров моделей
         params = params_func(trial, X)
-        X_trans, y_trans, cv_trans, params_trans = self.preprocessing(X.copy(), y.copy(), copy.deepcopy(cv), params)
+        X_trans, y_trans, cv_trans, params_trans = preprocessing.preprocessing(X.copy(),
+                                                                               y.copy(),
+                                                                               copy.deepcopy(cv),
+                                                                               copy.deepcopy(params))
 
         if model == 'lgbm':
             cv_model, test_loss = self.lgbm_model(X_trans,
@@ -131,7 +137,6 @@ class training:
                                                   cv_trans,
                                                   params_trans,
                                                   trial)
-            mean_cv = cv_model['loss-mean'][-1]
             iters = len(cv_model['loss-mean'])
             neptune.log_metric('std_cv_loss', cv_model['loss-stdv'][-1])
             neptune.log_metric('iterations', iters)
@@ -150,48 +155,3 @@ class training:
             neptune.log_metric('test_loss', test_loss)
 
         return (mean_cv)
-
-    def preprocessing(self, X, y, cv, params):
-
-        print('current params:', params)
-        n_back = params['n_back']
-        params.pop('n_back')
-        n_in = params['n_in']
-        params.pop('n_in')
-
-        print('X shape before dropped nans', X.shape)
-        X = X.shift(n_back)
-        X = X.dropna()
-        X = X.reset_index(drop = True)
-        print('X shape after dropped nans', X.shape)
-        print('cv shape before dropped nans', len(cv[0][0]))
-
-        def prepare_features(n_in, train_features):
-            train_features['grouper'] = 1
-            final_features = pd.DataFrame()
-            for n in range(n_in, train_features.shape[0]):
-                n_in_previous = train_features.iloc[(n - n_in):(n + 1), :]
-                previous_pivoted = pd.pivot_table(n_in_previous, index='grouper', columns='timestamp')
-                previous_pivoted.columns = previous_pivoted.columns.get_level_values(0) + \
-                                           '_' + \
-                                           pd.Series(list(range(0, n_in + 1)) * 10).astype(str)
-                final_features = final_features.append(previous_pivoted.transpose()[1])
-            final_features.index = train_features.iloc[n_in:, :].index
-
-            return final_features
-
-        X = prepare_features(n_in, X)
-        y = y[n_in+n_back:]['B_C2H6']
-
-        t = 0
-        for fold in cv:
-            fold[0] = fold[0][n_in+n_back:]
-            for idx1 in range(0, len(fold[0])):
-                fold[0][idx1] = fold[0][idx1] - n_in - n_back
-
-            for idx2 in range(0, len(fold[1])):
-                fold[1][idx2] = fold[1][idx2] - n_in - n_back
-            cv[t] = fold
-            t = t + 1
-        print('cv shape after dropped nans', len(cv[0][0]))
-        return X, y, cv, params
