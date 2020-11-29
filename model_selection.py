@@ -76,7 +76,7 @@ class training:
         test_loss = evals_result['test_data']['loss'][-1]
         return (cv_model, test_loss)
 
-    def pl_model(self, X, y, cv, params, trial):
+    def pl_model(self, X, y, cv, params):
 
         batch_size = params['batch_size']
         params.pop('batch_size')
@@ -137,6 +137,7 @@ class training:
                                                   cv_trans,
                                                   params_trans,
                                                   trial)
+            mean_cv = cv_model['loss-mean'][-1]
             iters = len(cv_model['loss-mean'])
             neptune.log_metric('std_cv_loss', cv_model['loss-stdv'][-1])
             neptune.log_metric('iterations', iters)
@@ -146,8 +147,7 @@ class training:
             mean_cv, std_cv_loss, cv_scores, iterations, test_loss = self.pl_model(X_trans,
                                                                                    y_trans,
                                                                                    cv_trans,
-                                                                                   params_trans,
-                                                                                   trial)
+                                                                                   params_trans)
 
             neptune.log_metric('std_cv_loss', std_cv_loss)
             neptune.log_text('cv_scores', cv_scores)
