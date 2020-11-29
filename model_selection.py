@@ -33,7 +33,8 @@ class training:
 
         def lgb_scoring(y_hat, data):
             y_true = data.get_label()
-            return 'loss', mean_absolute_error(y_true, y_hat), False
+            mape = np.mean(np.abs(y_true - y_hat)/np.abs(y_true))
+            return 'loss', mape, False
 
         train_data = lgb.Dataset(X, y)
         cv_model = lgb.cv(params = params,
@@ -122,25 +123,25 @@ class training:
 
         ## Множество параметров моделей
         params = params_func(trial, X)
-        X, y, cv, params = self.preprocessing(X, y, cv, params)
+        X_trans, y_trans, cv_trans, params_trans = self.preprocessing(X.copy(), y.copy(), copy.deepcopy(cv), params)
 
         if model == 'lgbm':
-            cv_model, test_loss = self.lgbm_model(X.copy(),
-                                                  y.copy(),
-                                                  copy.deepcopy(cv),
-                                                  params,
+            cv_model, test_loss = self.lgbm_model(X_trans,
+                                                  y_trans,
+                                                  cv_trans,
+                                                  params_trans,
                                                   trial)
+            mean_cv = cv_model['loss-mean'][-1]
             iters = len(cv_model['loss-mean'])
             neptune.log_metric('std_cv_loss', cv_model['loss-stdv'][-1])
             neptune.log_metric('iterations', iters)
             neptune.log_metric('test_loss', test_loss)
 
         if model == 'torch':
-            import torch
-            mean_cv, std_cv_loss, cv_scores, iterations, test_loss = self.pl_model(X.copy(),
-                                                                                   y.copy(),
-                                                                                   copy.deepcopy(cv),
-                                                                                   params,
+            mean_cv, std_cv_loss, cv_scores, iterations, test_loss = self.pl_model(X_trans,
+                                                                                   y_trans,
+                                                                                   cv_trans,
+                                                                                   params_trans,
                                                                                    trial)
 
             neptune.log_metric('std_cv_loss', std_cv_loss)
@@ -153,41 +154,44 @@ class training:
     def preprocessing(self, X, y, cv, params):
 
         print('current params:', params)
-        seq_len = params['seq_len']
-        params.pop('seq_len')
         n_back = params['n_back']
         params.pop('n_back')
-        n_rolling = params['n_rolling']
-        params.pop('n_rolling')
+        n_in = params['n_in']
+        params.pop('n_in')
 
-        def make_seqs(n, data):
-            final_X = []
+        print('X shape before dropped nans', X.shape)
+        X = X.shift(n_back)
+        X = X.dropna()
+        X = X.reset_index(drop = True)
+        print('X shape after dropped nans', X.shape)
+        print('cv shape before dropped nans', len(cv[0][0]))
 
-            def seq2seq(x):
-                seqs_X.append(np.array(x).reshape(-1, 1))
-                return (5)
+        def prepare_features(n_in, train_features):
+            train_features['grouper'] = 1
+            final_features = pd.DataFrame()
+            for n in range(n_in, train_features.shape[0]):
+                n_in_previous = train_features.iloc[(n - n_in):(n + 1), :]
+                previous_pivoted = pd.pivot_table(n_in_previous, index='grouper', columns='timestamp')
+                previous_pivoted.columns = previous_pivoted.columns.get_level_values(0) + \
+                                           '_' + \
+                                           pd.Series(list(range(0, n_in + 1)) * 10).astype(str)
+                final_features = final_features.append(previous_pivoted.transpose()[1])
+            final_features.index = train_features.iloc[n_in:, :].index
 
-            for col in data.columns:
-                seqs_X = []
-                data[col].rolling(n).apply(seq2seq)
-                seqs_X = np.array(seqs_X)
-                final_X.append(seqs_X)
+            return final_features
 
-            final_X = np.concatenate(final_X, axis=2)
-            return (final_X)
-
-        X = make_seqs(seq_len, X)
-        y = y[((seq_len - 1) + max(n_rolling - 1, n_back)):]
+        X = prepare_features(n_in, X)
+        y = y[n_in+n_back:]['B_C2H6']
 
         t = 0
         for fold in cv:
-            fold[0] = fold[0][(seq_len - 1) + max(n_rolling - 1, n_back):]
+            fold[0] = fold[0][n_in+n_back:]
             for idx1 in range(0, len(fold[0])):
-                fold[0][idx1] = fold[0][idx1] - (seq_len - 1) - max(n_rolling - 1, n_back)
+                fold[0][idx1] = fold[0][idx1] - n_in - n_back
 
             for idx2 in range(0, len(fold[1])):
-                fold[1][idx2] = fold[1][idx2] - (seq_len - 1) - max(n_rolling - 1, n_back)
+                fold[1][idx2] = fold[1][idx2] - n_in - n_back
             cv[t] = fold
             t = t + 1
-
+        print('cv shape after dropped nans', len(cv[0][0]))
         return X, y, cv, params
