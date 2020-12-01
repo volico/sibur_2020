@@ -4,14 +4,23 @@ import optuna
 import neptunecontrib.monitoring.optuna as optuna_utils
 import numpy as np
 import copy
-from sklearn.metrics import mean_absolute_error
 import lightgbm as lgb
 import preprocessing
+import os
+
 
 class training:
-
-    def __init__(self, nn_model = None, training_nn = None,
-                 name=None, description=None, params = None, properties=None, tags=None, upload_source_files=None):
+    '''
+    Класс, отвечающий за тренировку модели
+    nn_model - модель, наследующая pl.LightningModule
+    trainning_nn - класс, тренирующий nn_model
+    остальные параметры - настройки эксперимента в neptune.ai
+    '''
+    def __init__(
+            self, nn_model = None, training_nn = None,
+            name=None, description=None, params = None,
+            properties=None, tags=None, upload_source_files=None
+    ):
 
         ## Создаем эксперимент в neptune
         neptune.create_experiment(name, description, params, properties, tags, upload_source_files)
@@ -19,22 +28,39 @@ class training:
         self.training_nn = training_nn
 
     def set_up_studying(self, random_state, direction='minimize'):
+        '''
+        Инициализация подборки параметров в optuna
+        random_state - random seed для сэмплера параметров
+        direction - направление оптимизации (максимизация или минимизация)
+        '''
 
         ## Выбираем стандартный сэмплер для подборки параметров
         sampler = optuna.samplers.TPESampler(seed=random_state)
 
-        self.study = optuna.create_study(sampler=sampler, direction='minimize')
+        self.study = optuna.create_study(sampler=sampler, direction=direction)
 
     def train(self, X, y = None, cv=None, model=None, params_func=None, n_trials=None):
-
+        '''
+        X - фичи (может быть датафрейм/матрица, в зависимости от preprocessing)
+        y - таргеты (может быть датафрейм/матрица, в зависимости от preprocessing)
+        '''
         ## минимизируем ошибку
         self.study.optimize(lambda trial: self.objective(trial, X, y, cv, model, params_func),
                             n_trials=n_trials, callbacks=[optuna_utils.NeptuneCallback()])
-    def lgbm_model(self,X, y, cv, params, trial):
-
+    def lgbm_model(self,X, y, cv, params, log_importance, trial):
+        '''
+        X - фичи (матрица/датафрейм, не важно)
+        y - таргеты (матрица/датафрейм, не важно)
+        cv - список/вектор их фолдов(пример: [[[0, 1, 2], [3, 4, 5]]]) (как для sklearn gridsearch) (порядковые индексы)
+        params - параметры для lgbm модели (и только для нее)
+        '''
         def lgb_scoring(y_hat, data):
+            '''
+            Функция для оценивания качества модели на валидационной выборке
+            Возвращает: название метрики, метрика, is_high_better
+            '''
             y_true = data.get_label()
-            return 'loss', mean_absolute_error(y_true, y_hat), False
+            return 'loss', np.mean(np.abs((y_true - y_hat)/y_true)), False
 
         train_data = lgb.Dataset(X, y)
         cv_model = lgb.cv(params = params,
@@ -42,25 +68,17 @@ class training:
                           folds = cv[:-1],
                           feval = lgb_scoring,
                           early_stopping_rounds = 10,
-                          verbose_eval = False)
+                          verbose_eval = True)
 
         X_train = X.iloc[cv[-1][0], :]
         y_train = y.iloc[cv[-1][0]]
         X_test = X.iloc[cv[-1][1], :]
         y_test = y.iloc[cv[-1][1]]
         train_data = lgb.Dataset(X_train,
-                                 y_train
-#                                 ,
-#                                 categorical_feature = [X.columns.get_loc(c) for c in \
- #                                                       [col for col in X.columns \
-  #                                                       if ('popular' in col) | ('identifier' in col)]]
-                                 )
+                                 y_train)
         test_data = lgb.Dataset(X_test,
-                                y_test,
-#                                categorical_feature = [X.columns.get_loc(c) for c in \
-#                                                       [col for col in X.columns \
-#                                                        if ('popular' in col) | ('identifier' in col)]]
-                                                                                        )
+                                y_test
+                                )
         evals_result = {}
         params['n_estimators'] = len(cv_model['loss-mean'])
         test_model = lgb.train(params = params,
@@ -70,13 +88,23 @@ class training:
                                feval = lgb_scoring,
                                evals_result = evals_result,
                                verbose_eval = False)
-#        feature_imp = pd.DataFrame({'Column': X.columns, 'Importance': test_model.feature_importance()})
-#        feature_imp.to_csv('feature_imp_{}.csv'.format(trial.number), index = False)
-#        neptune.log_artifact('feature_imp_{}.csv'.format(trial.number))
+        if log_importance == True:
+            feature_imp = pd.DataFrame({'Column': X.columns, 'Importance': test_model.feature_importance()})
+            feature_imp.to_csv('feature_imp_{}.csv'.format(trial.number), index = False)
+            neptune.log_artifact('feature_imp_{}.csv'.format(trial.number))
+            os.remove('feature_imp_{}.csv'.format(trial.number))
         test_loss = evals_result['test_data']['loss'][-1]
         return (cv_model, test_loss)
 
     def pl_model(self, X, y, cv, params):
+        '''
+        X - фичи (матрица/датафрейм, не важно)
+        y - таргеты (матрица/датафрейм, не важно)
+        cv - список/вектор их фолдов(пример: [[[0, 1, 2], [3, 4, 5]]]) (как для sklearn gridsearch) (порядковые индексы)
+        params - параметры для нейронки модели (и только для нее)
+        batch_size -  размер батча
+        '''
+
 
         batch_size = params['batch_size']
         params.pop('batch_size')
@@ -103,7 +131,7 @@ class training:
 
             mean_best_iter = round(iters[target].mean())
             model_test = self.training_nn(self.nn_model, X, y[[target]])
-            model_test.train(min_epochs=mean_best_iter,
+            test_losses = model_test.train(min_epochs=mean_best_iter,
                                            max_epochs=mean_best_iter,
                                            model_params=params,
                                            fold=cv[-1],
@@ -136,6 +164,7 @@ class training:
                                                   y_trans,
                                                   cv_trans,
                                                   params_trans,
+                                                  True,
                                                   trial)
             mean_cv = cv_model['loss-mean'][-1]
             iters = len(cv_model['loss-mean'])

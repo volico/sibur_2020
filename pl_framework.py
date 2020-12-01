@@ -55,14 +55,16 @@ class nn_training:
                                  callbacks=[EarlyStopping(min_delta=0.00001, patience=5, monitor='val_loss')],
                                  num_sanity_val_steps=0,
                                  gpus=1,
-                                 flush_logs_every_n_steps=10**10000000)
+                                 logger=False,
+                                 checkpoint_callback=False)
         else:
             trainer = pl.Trainer(min_epochs=min_epochs,
                                  max_epochs=max_epochs,
                                  progress_bar_refresh_rate=0,
                                  num_sanity_val_steps=0,
                                  gpus=1,
-                                 flush_logs_every_n_steps=10**10000000)
+                                 logger=False,
+                                 checkpoint_callback=False)
 
         my_model = self.model(**model_params)
         ## Тренирум модель

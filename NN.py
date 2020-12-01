@@ -4,9 +4,9 @@ from pytorch_forecasting.metrics import MAPE
 
 class simple_torchpl(pl.LightningModule):
 
-    def __init__(self, n_in, n_h_1, n_out,
+    def __init__(self,  n_h_1, n_out,
                  activation1,
-                 optimizer, lr, weight_decay, p_1, loss):
+                 optimizer, lr, weight_decay, p_1, p_2, loss):
         super(simple_torchpl, self).__init__()
         self.optimizer = optimizer
         self.lr = lr
@@ -29,23 +29,20 @@ class simple_torchpl(pl.LightningModule):
         elif activation1 == 'CELU':
             self.activ1 = torch.nn.CELU()
 
-
-
-        self.lstm = torch.nn.LSTM(n_in, n_h_1, batch_first=True)
         self.dropout1 = torch.nn.Dropout(p_1)
+        self.dropout2 = torch.nn.Dropout(p_2)
+        self.linear1 = torch.nn.Linear(10, n_h_1)
         self.linear_final = torch.nn.Linear(n_h_1, n_out)
         self.loss = loss()
         self.loss_sec = MAPE()
 
     def forward(self, x):
 
-        x, _ = self.lstm(x)
-        del _
-        torch.cuda.empty_cache()
-        x = x[:, -1, :]
+        x = self.dropout1(x)
+        x = self.linear1(x)
         x = self.activ1(x)
 
-        x = self.dropout1(x)
+        x = self.dropout2(x)
         predictions = self.linear_final(x)
         return predictions
 
@@ -54,7 +51,7 @@ class simple_torchpl(pl.LightningModule):
         y_pred = self.forward(x)
         train_loss = self.loss(y_pred, y)
         train_mape_loss = self.loss_sec(y_pred, y).item()
-        print('train_loss:', train_mape_loss)
+#        print('train_loss:', train_mape_loss)
 
         return (train_loss)
 
@@ -63,7 +60,7 @@ class simple_torchpl(pl.LightningModule):
         y_pred = self.forward(x)
         test_mape_loss = self.loss_sec(y_pred, y).item()
         self.log('val_loss', test_mape_loss)
-        print('val_loss:', test_mape_loss)
+#        print('val_loss:', test_mape_loss)
         return (test_mape_loss)
 
     def configure_optimizers(self):
