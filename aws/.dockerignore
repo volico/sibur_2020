@@ -1,7 +1,0 @@
-data
-*.csv
-*.pickle
-.ipynb_checkpoints
-*.idea
-__pycache__
-lightning_logs

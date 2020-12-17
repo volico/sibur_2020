@@ -28,9 +28,9 @@ class nn_training:
 
     def data_loaders(self, fold, X, y, batch_size):
         X_train = torch.from_numpy(X[fold[0]]).float().to(self.device)
-        y_train = torch.from_numpy(y.iloc[fold[0]].values).float().to(self.device)
+        y_train = torch.from_numpy(y[fold[0]]).float().to(self.device)
         X_test = torch.from_numpy(X[fold[1]]).float().to(self.device)
-        y_test = torch.from_numpy(y.iloc[fold[1]].values).float().to(self.device)
+        y_test = torch.from_numpy(y[fold[1]]).float().to(self.device)
 
         set_seed(seed=random_state)
         train_dataset = torch.utils.data.TensorDataset(X_train, y_train)

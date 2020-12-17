@@ -1,7 +1,0 @@
-numpy==1.19.2
-pandas==1.1.3
-neptune-client
-optuna
-neptune-contrib
-pytorch_lightning==1.0.4
-pytorch_forecasting==0.6.0

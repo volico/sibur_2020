@@ -3,10 +3,10 @@ import pytorch_lightning as pl
 from pytorch_forecasting.metrics import MAPE
 
 class simple_torchpl(pl.LightningModule):
+    ''' pytorch lightning модель
+    '''
 
-    def __init__(self,  n_h_1, n_out,
-                 activation1,
-                 optimizer, lr, weight_decay, p_1, p_2, loss):
+    def __init__(self,  n_h_1, activation1, optimizer, lr, weight_decay, p_1, p_2, loss):
         super(simple_torchpl, self).__init__()
         self.optimizer = optimizer
         self.lr = lr
@@ -32,8 +32,13 @@ class simple_torchpl(pl.LightningModule):
         self.dropout1 = torch.nn.Dropout(p_1)
         self.dropout2 = torch.nn.Dropout(p_2)
         self.linear1 = torch.nn.Linear(10, n_h_1)
-        self.linear_final = torch.nn.Linear(n_h_1, n_out)
-        self.loss = loss()
+        self.linear_final = torch.nn.Linear(n_h_1, 1)
+        if loss == 'MSE':
+            self.loss = torch.nn.MSELoss()
+        elif loss == 'MAE':
+            self.loss = torch.nn.L1Loss()
+        elif loss == 'MAPE':
+            self.loss = MAPE()
         self.loss_sec = MAPE()
 
     def forward(self, x):
@@ -50,8 +55,6 @@ class simple_torchpl(pl.LightningModule):
         x, y = batch
         y_pred = self.forward(x)
         train_loss = self.loss(y_pred, y)
-        train_mape_loss = self.loss_sec(y_pred, y).item()
-#        print('train_loss:', train_mape_loss)
 
         return (train_loss)
 
@@ -60,7 +63,6 @@ class simple_torchpl(pl.LightningModule):
         y_pred = self.forward(x)
         test_mape_loss = self.loss_sec(y_pred, y).item()
         self.log('val_loss', test_mape_loss)
-#        print('val_loss:', test_mape_loss)
         return (test_mape_loss)
 
     def configure_optimizers(self):
