@@ -165,48 +165,6 @@ class training:
         test_loss = evals_result['test_data']['loss'][-1]
         return (cv_model, test_loss)
 
-
-    def catboost_model(self, X, y, cv, params):
-        # ЕЩЕ НЕДОПИСАНО
-        '''Тренировка и оценка catboost модели ()
-        X - фичи (матрица/датафрейм, не важно)
-        y - таргеты (матрица/датафрейм, не важно)
-        cv - список фолдов для кросс валидации
-        params - параметры для lgbm модели (и только для нее)
-        '''
-
-        train_data = catboost.Pool(X, y)
-        cv_model = catboost.cv(params = params,
-                          pool = train_data,
-                          folds = cv[:-1],
-                          early_stopping_rounds = 10,
-                          verbose_eval = False)
-
-        X_train = X[cv[-1][0], :]
-        y_train = y[cv[-1][0]]
-        X_test = X[cv[-1][1], :]
-        y_test = y[cv[-1][1]]
-        train_data = catboost.Pool(X_train,
-                                 y_train)
-        test_data = catboost.Pool(X_test,
-                                y_test
-                                )
-
-        metric_data = pd.read_csv('catboost_info/fold_0_test_error.tsv', sep='\t')
-        last_mape = metric_data[['MAPE', 'MAPE.1']].values[-1]
-        cv_mean = np.mean(last_mape)
-        cv_std = np.std(last_mape)
-        cv_iters = len(metric_data)
-        params['n_estimators'] = cv_iters
-        test_model = catboost.train(params = params,
-                                    dtrain = train_data,
-                                    verbose_eval = False)
-        predictions = np.array(test_model.predict(test_data))
-        y_test = y_test.values
-        test_mape = np.mean(np.abs((y_test-predictions)/y_test))
-
-        return (cv_mean, cv_std, cv_iters, test_mape)
-
     def sklearn_model(self, X, y, cv, params):
 
         def mape(y_true, y_pred):
