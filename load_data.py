@@ -1,6 +1,10 @@
 import pandas as pd
 
 def load(data_path, drop_start = True):
+    '''Загрузка датасета для создания индексов кросс валидации
+    data_path - путь к .csv файлу
+    drop_start - нужно ли удалить первый ~месяц наблюдения
+    '''
     train_features = pd.read_csv(data_path + 'train_features.csv')
     test_features = pd.read_csv(data_path + 'test_features.csv')
     train_targets = pd.read_csv(data_path + 'train_targets.csv')

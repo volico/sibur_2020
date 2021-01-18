@@ -42,7 +42,6 @@ class simple_torchpl(pl.LightningModule):
         self.loss_sec = MAPE()
 
     def forward(self, x):
-
         x = self.dropout1(x)
         x = self.linear1(x)
         x = self.activ1(x)

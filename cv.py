@@ -4,6 +4,7 @@ def get_indices(data, fold_times, first_train = True):
     fold_times - список границ фолдов
     first_train - нужно ли заменить обучающая выборку во всех фолдах на обучающую выборку 1го фолда
     '''
+
     cv = []
     for fold_time in fold_times:
         train = data[data['timestamp']< fold_time[0]].index

@@ -7,7 +7,6 @@ import copy
 import lightgbm as lgb
 import preprocessing
 import os
-import catboost
 import xgboost
 from sklearn.model_selection import cross_validate
 from sklearn.metrics import make_scorer
@@ -17,6 +16,7 @@ class training:
     '''Класс, отвечающий за тренировку модели
     nn_model - модель нейронной сети, наследующая pl.LightningModule (при необходимости)
     trainning_nn - класс, тренирующий nn_model (при необходимости)
+    sklearn_class - модель sklearn к которой можно применить метод set_params
     остальные параметры - настройки эксперимента в neptune.ai (при необходимости)
     '''
     def __init__(
@@ -47,7 +47,7 @@ class training:
         X - фичи (может быть датафрейм/матрица, в зависимости от preprocessing)
         y - таргеты (может быть датафрейм/матрица, в зависимости от preprocessing)
         cv - список фолдов для кросс валидации
-        model - модель ('catboost', 'lgbm' или 'pytorch')
+        model - модель ('sklearn', 'lgbm' или 'pytorch')
         params_func - фунция, возращающая для данного trial множество параметров
         n_trials - количество итераций при подборке параметров
         '''
@@ -108,7 +108,6 @@ class training:
 
 
     def xgboost_model(self,X, y, cv, params, log_importance, trial):
-        global cv_model
         '''Тренировка и оценка lgbm модели
         X - фичи (матрица/датафрейм, не важно)
         y - таргеты (матрица/датафрейм, не важно)
@@ -117,6 +116,7 @@ class training:
         log_importance - нужно ли логировать feature_importance в neptune
         trial - текущая итерация подбори параметров
         '''
+
         def xgb_scoring(y_hat, data):
             '''
             Функция для оценивания качества модели на валидационной выборке
@@ -166,12 +166,24 @@ class training:
         return (cv_model, test_loss)
 
     def sklearn_model(self, X, y, cv, params):
+        '''Тренировка и оценка sklearn модели
+        X - фичи (матрица/датафрейм, не важно)
+        y - таргеты (матрица/датафрейм, не важно)
+        cv - список фолдов для кросс валидации
+        params - параметры для lgbm модели (и только для нее)
+        log_importance - нужно ли логировать feature_importance в neptune
+        trial - текущая итерация подбори параметров
+        '''
 
         def mape(y_true, y_pred):
+            '''
+            Функция для оценивания качества модели на валидационной выборке
+            Возвращает: значение метрики
+            '''
             mape = np.mean(np.abs((y_true - y_pred) / y_true))
             return mape
 
-        model = self.sklearn_class(**params)
+        model = self.sklearn_class.set_params(**params)
         cv_output = cross_validate(model,
                                    X = X,
                                    y = y,
@@ -195,7 +207,6 @@ class training:
         params - параметры для lgbm модели (и только для нее)
         '''
 
-
         batch_size = params['batch_size']
         params.pop('batch_size')
         iters = []
@@ -214,7 +225,6 @@ class training:
             fold_num = fold_num+1
         best_iters = round(np.mean(iters))
         best_cv = scores
-
         model_test = self.training_nn(self.nn_model, X, y)
         model_test.train(min_epochs=best_iters,
                          max_epochs=best_iters,
@@ -231,10 +241,9 @@ class training:
         X - фичи (матрица/датафрейм, не важно)
         y - таргеты (матрица/датафрейм, не важно)
         cv - список фолдов для кросс валидации
-        model - модель ('catboost', 'lgbm' или 'pytorch')
+        model - модель ('sklearn', 'lgbm' или 'pytorch')
         params_func - фунция, возращающая для данного trial множество параметров
         '''
-
 
         ## Множество параметров моделей
         params = params_func(trial, X)
@@ -243,7 +252,6 @@ class training:
                                                                                y.copy(),
                                                                                copy.deepcopy(cv),
                                                                                copy.deepcopy(params))
-
         if model == 'lgbm':
             cv_model, test_loss = self.lgbm_model(X_trans,
                                                   y_trans,
@@ -270,31 +278,17 @@ class training:
             neptune.log_metric('iterations', iters)
             neptune.log_metric('test_loss', test_loss)
 
-        if model == 'catboost':
-            mean_cv, cv_std, cv_iters, test_mape = self.catboost_model(X_trans,
-                                                                       y_trans,
-                                                                       cv_trans,
-                                                                       params_trans)
-            neptune.log_metric('std_cv_loss', cv_std)
-            neptune.log_metric('iterations', cv_iters)
-            neptune.log_metric('test_loss', test_mape)
-
-
         if model == 'torch':
             mean_cv, std_cv_loss, iterations, test_loss = self.pl_model(X_trans,
                                                                         y_trans,
                                                                         cv_trans,
                                                                         params_trans)
-
             neptune.log_metric('std_cv_loss', std_cv_loss)
             neptune.log_metric('iterations', iterations)
             neptune.log_metric('test_loss', test_loss)
 
         if model == 'sklearn':
-
             mean_cv, cv_std, test_loss = self.sklearn_model(X_trans, y_trans, cv_trans, params_trans)
-            print(X_trans)
-
             neptune.log_metric('std_cv_loss', cv_std)
             neptune.log_metric('test_loss', test_loss)
 

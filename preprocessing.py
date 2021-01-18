@@ -1,7 +1,7 @@
 import numpy as np
 
 def preprocessing(X, y, cv, params):
-    '''
+    '''Обработка датасета перед тренировкой модели
     X - фичи (pandas.DataFrame)
     y - таргеты (pandas.DataFrame)
     params - параметры модели (dict)
@@ -42,4 +42,5 @@ def preprocessing(X, y, cv, params):
     print('cv after trans:', len(cv[0][0]))
     print('shape of X after trans:', X.shape)
     print('shape of y after trans:', y.shape)
+
     return X.values, y.values, cv, params
