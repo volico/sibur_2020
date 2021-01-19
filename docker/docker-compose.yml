@@ -1,0 +1,8 @@
+services:
+  models:
+    image: sibur:latest
+    volumes:
+      - C:\Users\Sibmice\Desktop\Projects\sibur_2020\docker\data:/data
+      - C:\Users\Sibmice\Desktop\Projects\sibur_2020\docker\models:/models
+    ports:
+      - 5000:5000
